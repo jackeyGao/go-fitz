@@ -3,7 +3,7 @@
 
 #include "mupdf/fitz/system.h"
 #include "mupdf/fitz/context.h"
-#include "mupdf/fitz/geometry.h"
+#include "mupdf/fitz/math.h"
 #include "mupdf/fitz/colorspace.h"
 #include "mupdf/fitz/image.h"
 #include "mupdf/fitz/shade.h"
@@ -13,13 +13,13 @@
 /*
 	The different format handlers (pdf, xps etc) interpret pages to a
 	device. These devices can then process the stream of calls they
-	receive in various ways:
+	recieve in various ways:
 		The trace device outputs debugging information for the calls.
 		The draw device will render them.
 		The list device stores them in a list to play back later.
 		The text device performs text extraction and searching.
 		The bbox device calculates the bounding box for the page.
-	Other devices can (and will) be written in the future.
+	Other devices can (and will) be written in future.
 */
 typedef struct fz_device_s fz_device;
 
@@ -77,46 +77,59 @@ char *fz_blendmode_name(int blendmode);
 
 typedef struct fz_device_container_stack_s fz_device_container_stack;
 
+struct fz_device_container_stack_s
+{
+	fz_rect scissor;
+	int flags;
+	int user;
+};
+
+enum
+{
+	fz_device_container_stack_is_clip_path = 1,
+	fz_device_container_stack_is_clip_stroke_path = 2,
+	fz_device_container_stack_is_clip_text = 4,
+	fz_device_container_stack_is_clip_stroke_text = 8,
+	fz_device_container_stack_is_clip_image_mask = 16,
+	fz_device_container_stack_in_mask = 32,
+	fz_device_container_stack_is_mask = 64,
+	fz_device_container_stack_is_group = 128,
+};
+
 struct fz_device_s
 {
-	int refs;
 	int hints;
 	int flags;
 
-	void (*close_device)(fz_context *, fz_device *);
-	void (*drop_device)(fz_context *, fz_device *);
+	void (*drop_imp)(fz_context *, fz_device *);
 
-	void (*fill_path)(fz_context *, fz_device *, const fz_path *, int even_odd, const fz_matrix *, fz_colorspace *, const float *color, float alpha, const fz_color_params *);
-	void (*stroke_path)(fz_context *, fz_device *, const fz_path *, const fz_stroke_state *, const fz_matrix *, fz_colorspace *, const float *color, float alpha, const fz_color_params *);
+	void (*fill_path)(fz_context *, fz_device *, const fz_path *, int even_odd, const fz_matrix *, fz_colorspace *, const float *color, float alpha);
+	void (*stroke_path)(fz_context *, fz_device *, const fz_path *, const fz_stroke_state *, const fz_matrix *, fz_colorspace *, const float *color, float alpha);
 	void (*clip_path)(fz_context *, fz_device *, const fz_path *, int even_odd, const fz_matrix *, const fz_rect *scissor);
 	void (*clip_stroke_path)(fz_context *, fz_device *, const fz_path *, const fz_stroke_state *, const fz_matrix *, const fz_rect *scissor);
 
-	void (*fill_text)(fz_context *, fz_device *, const fz_text *, const fz_matrix *, fz_colorspace *, const float *color, float alpha, const fz_color_params *);
-	void (*stroke_text)(fz_context *, fz_device *, const fz_text *, const fz_stroke_state *, const fz_matrix *, fz_colorspace *, const float *color, float alpha, const fz_color_params *);
+	void (*fill_text)(fz_context *, fz_device *, const fz_text *, const fz_matrix *, fz_colorspace *, const float *color, float alpha);
+	void (*stroke_text)(fz_context *, fz_device *, const fz_text *, const fz_stroke_state *, const fz_matrix *, fz_colorspace *, const float *color, float alpha);
 	void (*clip_text)(fz_context *, fz_device *, const fz_text *, const fz_matrix *, const fz_rect *scissor);
 	void (*clip_stroke_text)(fz_context *, fz_device *, const fz_text *, const fz_stroke_state *, const fz_matrix *, const fz_rect *scissor);
 	void (*ignore_text)(fz_context *, fz_device *, const fz_text *, const fz_matrix *);
 
-	void (*fill_shade)(fz_context *, fz_device *, fz_shade *shd, const fz_matrix *ctm, float alpha, const fz_color_params *color_params);
-	void (*fill_image)(fz_context *, fz_device *, fz_image *img, const fz_matrix *ctm, float alpha, const fz_color_params *color_params);
-	void (*fill_image_mask)(fz_context *, fz_device *, fz_image *img, const fz_matrix *ctm, fz_colorspace *, const float *color, float alpha, const fz_color_params *color_params);
+	void (*fill_shade)(fz_context *, fz_device *, fz_shade *shd, const fz_matrix *ctm, float alpha);
+	void (*fill_image)(fz_context *, fz_device *, fz_image *img, const fz_matrix *ctm, float alpha);
+	void (*fill_image_mask)(fz_context *, fz_device *, fz_image *img, const fz_matrix *ctm, fz_colorspace *, const float *color, float alpha);
 	void (*clip_image_mask)(fz_context *, fz_device *, fz_image *img, const fz_matrix *ctm, const fz_rect *scissor);
 
 	void (*pop_clip)(fz_context *, fz_device *);
 
-	void (*begin_mask)(fz_context *, fz_device *, const fz_rect *, int luminosity, fz_colorspace *, const float *bc, const fz_color_params *);
+	void (*begin_mask)(fz_context *, fz_device *, const fz_rect *, int luminosity, fz_colorspace *, const float *bc);
 	void (*end_mask)(fz_context *, fz_device *);
-	void (*begin_group)(fz_context *, fz_device *, const fz_rect *, fz_colorspace *cs, int isolated, int knockout, int blendmode, float alpha);
+	void (*begin_group)(fz_context *, fz_device *, const fz_rect *, int isolated, int knockout, int blendmode, float alpha);
 	void (*end_group)(fz_context *, fz_device *);
 
 	int (*begin_tile)(fz_context *, fz_device *, const fz_rect *area, const fz_rect *view, float xstep, float ystep, const fz_matrix *ctm, int id);
 	void (*end_tile)(fz_context *, fz_device *);
 
 	void (*render_flags)(fz_context *, fz_device *, int set, int clear);
-	void (*set_default_colorspaces)(fz_context *, fz_device *, fz_default_colorspaces *);
-
-	void (*begin_layer)(fz_context *, fz_device *, const char *layer_name);
-	void (*end_layer)(fz_context *, fz_device *);
 
 	fz_rect d1_rect;
 
@@ -128,55 +141,45 @@ struct fz_device_s
 	fz_device_container_stack *container;
 };
 
-void fz_fill_path(fz_context *ctx, fz_device *dev, const fz_path *path, int even_odd, const fz_matrix *ctm, fz_colorspace *colorspace, const float *color, float alpha, const fz_color_params *color_params);
-void fz_stroke_path(fz_context *ctx, fz_device *dev, const fz_path *path, const fz_stroke_state *stroke, const fz_matrix *ctm, fz_colorspace *colorspace, const float *color, float alpha, const fz_color_params *color_params);
+void fz_fill_path(fz_context *ctx, fz_device *dev, const fz_path *path, int even_odd, const fz_matrix *ctm, fz_colorspace *colorspace, const float *color, float alpha);
+void fz_stroke_path(fz_context *ctx, fz_device *dev, const fz_path *path, const fz_stroke_state *stroke, const fz_matrix *ctm, fz_colorspace *colorspace, const float *color, float alpha);
 void fz_clip_path(fz_context *ctx, fz_device *dev, const fz_path *path, int even_odd, const fz_matrix *ctm, const fz_rect *scissor);
 void fz_clip_stroke_path(fz_context *ctx, fz_device *dev, const fz_path *path, const fz_stroke_state *stroke, const fz_matrix *ctm, const fz_rect *scissor);
-void fz_fill_text(fz_context *ctx, fz_device *dev, const fz_text *text, const fz_matrix *ctm, fz_colorspace *colorspace, const float *color, float alpha, const fz_color_params *color_params);
-void fz_stroke_text(fz_context *ctx, fz_device *dev, const fz_text *text, const fz_stroke_state *stroke, const fz_matrix *ctm, fz_colorspace *colorspace, const float *color, float alpha, const fz_color_params *color_params);
+void fz_fill_text(fz_context *ctx, fz_device *dev, const fz_text *text, const fz_matrix *ctm, fz_colorspace *colorspace, const float *color, float alpha);
+void fz_stroke_text(fz_context *ctx, fz_device *dev, const fz_text *text, const fz_stroke_state *stroke, const fz_matrix *ctm, fz_colorspace *colorspace, const float *color, float alpha);
 void fz_clip_text(fz_context *ctx, fz_device *dev, const fz_text *text, const fz_matrix *ctm, const fz_rect *scissor);
 void fz_clip_stroke_text(fz_context *ctx, fz_device *dev, const fz_text *text, const fz_stroke_state *stroke, const fz_matrix *ctm, const fz_rect *scissor);
 void fz_ignore_text(fz_context *ctx, fz_device *dev, const fz_text *text, const fz_matrix *ctm);
 void fz_pop_clip(fz_context *ctx, fz_device *dev);
-void fz_fill_shade(fz_context *ctx, fz_device *dev, fz_shade *shade, const fz_matrix *ctm, float alpha, const fz_color_params *color_params);
-void fz_fill_image(fz_context *ctx, fz_device *dev, fz_image *image, const fz_matrix *ctm, float alpha, const fz_color_params *color_params);
-void fz_fill_image_mask(fz_context *ctx, fz_device *dev, fz_image *image, const fz_matrix *ctm, fz_colorspace *colorspace, const float *color, float alpha, const fz_color_params *color_params);
+void fz_fill_shade(fz_context *ctx, fz_device *dev, fz_shade *shade, const fz_matrix *ctm, float alpha);
+void fz_fill_image(fz_context *ctx, fz_device *dev, fz_image *image, const fz_matrix *ctm, float alpha);
+void fz_fill_image_mask(fz_context *ctx, fz_device *dev, fz_image *image, const fz_matrix *ctm, fz_colorspace *colorspace, const float *color, float alpha);
 void fz_clip_image_mask(fz_context *ctx, fz_device *dev, fz_image *image, const fz_matrix *ctm, const fz_rect *scissor);
-void fz_begin_mask(fz_context *ctx, fz_device *dev, const fz_rect *area, int luminosity, fz_colorspace *colorspace, const float *bc, const fz_color_params *color_params);
+void fz_begin_mask(fz_context *ctx, fz_device *dev, const fz_rect *area, int luminosity, fz_colorspace *colorspace, const float *bc);
 void fz_end_mask(fz_context *ctx, fz_device *dev);
-void fz_begin_group(fz_context *ctx, fz_device *dev, const fz_rect *area, fz_colorspace *cs, int isolated, int knockout, int blendmode, float alpha);
+void fz_begin_group(fz_context *ctx, fz_device *dev, const fz_rect *area, int isolated, int knockout, int blendmode, float alpha);
 void fz_end_group(fz_context *ctx, fz_device *dev);
 void fz_begin_tile(fz_context *ctx, fz_device *dev, const fz_rect *area, const fz_rect *view, float xstep, float ystep, const fz_matrix *ctm);
 int fz_begin_tile_id(fz_context *ctx, fz_device *dev, const fz_rect *area, const fz_rect *view, float xstep, float ystep, const fz_matrix *ctm, int id);
 void fz_end_tile(fz_context *ctx, fz_device *dev);
 void fz_render_flags(fz_context *ctx, fz_device *dev, int set, int clear);
-void fz_set_default_colorspaces(fz_context *ctx, fz_device *dev, fz_default_colorspaces *default_cs);
-void fz_begin_layer(fz_context *ctx, fz_device *dev, const char *layer_name);
-void fz_end_layer(fz_context *ctx, fz_device *dev);
-fz_device *fz_new_device_of_size(fz_context *ctx, int size);
 
-#define fz_new_derived_device(CTX, TYPE) \
-	((TYPE *)Memento_label(fz_new_device_of_size(ctx,sizeof(TYPE)),#TYPE))
+void *fz_new_device(fz_context *ctx, int size);
 
 /*
-	fz_close_device: Signal the end of input, and flush any buffered output.
-	This is NOT called implicitly on fz_drop_device.
-*/
-void fz_close_device(fz_context *ctx, fz_device *dev);
-
-/*
-	fz_drop_device: Free a device of any type and its resources.
-	Don't forget to call fz_close_device before dropping the device,
-	or you may get incomplete output!
+	fz_drop_device: Free a devices of any type and its resources.
 */
 void fz_drop_device(fz_context *ctx, fz_device *dev);
-
-fz_device *fz_keep_device(fz_context *ctx, fz_device *dev);
 
 /*
 	fz_enable_device_hints : Enable hints in a device.
 
 	hints: mask of hints to enable.
+
+	For example: By default the draw device renders shadings. For some
+	purposes (perhaps rendering fast low quality thumbnails) you may want
+	to tell it to ignore shadings. For this you would enable the
+	FZ_IGNORE_SHADE hint.
 */
 void fz_enable_device_hints(fz_context *ctx, fz_device *dev, int hints);
 
@@ -184,20 +187,22 @@ void fz_enable_device_hints(fz_context *ctx, fz_device *dev, int hints);
 	fz_disable_device_hints : Disable hints in a device.
 
 	hints: mask of hints to disable.
+
+	For example: By default the text extraction device ignores images.
+	For some purposes however (such as extracting HTML) you may want to
+	enable the capturing of image data too. For this you would disable
+	the FZ_IGNORE_IMAGE hint.
 */
 void fz_disable_device_hints(fz_context *ctx, fz_device *dev, int hints);
-
-/*
-	Find current scissor region as tracked by the device.
-*/
-const fz_rect *fz_device_current_scissor(fz_context *ctx, fz_device *dev);
 
 enum
 {
 	/* Hints */
-	FZ_DONT_INTERPOLATE_IMAGES = 1,
-	FZ_MAINTAIN_CONTAINER_STACK = 2,
-	FZ_NO_CACHE = 4,
+	FZ_IGNORE_IMAGE = 1,
+	FZ_IGNORE_SHADE = 2,
+	FZ_DONT_INTERPOLATE_IMAGES = 4,
+	FZ_MAINTAIN_CONTAINER_STACK = 8,
+	FZ_NO_CACHE = 16,
 };
 
 /*
@@ -209,17 +214,17 @@ typedef struct fz_cookie_s fz_cookie;
 /*
 	Provide two-way communication between application and library.
 	Intended for multi-threaded applications where one thread is
-	rendering pages and another thread wants to read progress
+	rendering pages and another thread wants read progress
 	feedback or abort a job that takes a long time to finish. The
 	communication is unsynchronized without locking.
 
-	abort: The application should set this field to 0 before
+	abort: The appliation should set this field to 0 before
 	calling fz_run_page to render a page. At any point when the
 	page is being rendered the application my set this field to 1
 	which will cause the rendering to finish soon. This field is
 	checked periodically when the page is rendered, but exactly
 	when is not known, therefore there is no upper bound on
-	exactly when the rendering will abort. If the application
+	exactly when the the rendering will abort. If the application
 	did not provide a set of locks to fz_new_context, it must also
 	await the completion of fz_run_page before issuing another
 	call to fz_run_page. Note that once the application has set
@@ -281,39 +286,11 @@ fz_device *fz_new_bbox_device(fz_context *ctx, fz_rect *rectp);
 
 	Currently only tests for the presence of non-grayscale colors.
 
-	is_color: Possible values returned:
-		0: Definitely greyscale
-		1: Probably color (all colors were grey, but there
-		were images or shadings in a non grey colorspace).
-		2: Definitely color
-
 	threshold: The difference from grayscale that will be tolerated.
 	Typical values to use are either 0 (be exact) and 0.02 (allow an
 	imperceptible amount of slop).
-
-	options: A set of bitfield options, from the FZ_TEST_OPT set.
-
-	passthrough: A device to pass all calls through to, or NULL.
-	If set, then the test device can both test and pass through to
-	an underlying device (like, say, the display list device). This
-	means that a display list can be created and at the end we'll
-	know if it's colored or not.
-
-	In the absence of a passthrough device, the device will throw
-	an exception to stop page interpretation when color is found.
 */
-fz_device *fz_new_test_device(fz_context *ctx, int *is_color, float threshold, int options, fz_device *passthrough);
-
-enum
-{
-	/* If set, test every pixel of images exhaustively.
-	 * If clear, just look at colorspaces for images. */
-	FZ_TEST_OPT_IMAGES = 1,
-
-	/* If set, test every pixel of shadings. */
-	/* If clear, just look at colorspaces for shadings. */
-	FZ_TEST_OPT_SHADINGS = 2
-};
+fz_device *fz_new_test_device(fz_context *ctx, int *is_color, float threshold);
 
 /*
 	fz_new_draw_device: Create a device to draw on a pixmap.
@@ -323,10 +300,8 @@ enum
 	draw device, see fz_clear_pixmap* for how to clear it prior to
 	calling fz_new_draw_device. Free the device by calling
 	fz_drop_device.
-
-	transform: Transform from user space in points to device space in pixels.
 */
-fz_device *fz_new_draw_device(fz_context *ctx, const fz_matrix *transform, fz_pixmap *dest);
+fz_device *fz_new_draw_device(fz_context *ctx, fz_pixmap *dest);
 
 /*
 	fz_new_draw_device_with_bbox: Create a device to draw on a pixmap.
@@ -337,81 +312,11 @@ fz_device *fz_new_draw_device(fz_context *ctx, const fz_matrix *transform, fz_pi
 	calling fz_new_draw_device. Free the device by calling
 	fz_drop_device.
 
-	transform: Transform from user space in points to device space in pixels.
-
 	clip: Bounding box to restrict any marking operations of the
 	draw device.
 */
-fz_device *fz_new_draw_device_with_bbox(fz_context *ctx, const fz_matrix *transform, fz_pixmap *dest, const fz_irect *clip);
+fz_device *fz_new_draw_device_with_bbox(fz_context *ctx, fz_pixmap *dest, const fz_irect *clip);
 
-/*
-	fz_new_draw_device_with_proof: Create a device to draw on a pixmap.
-
-	dest: Target pixmap for the draw device. See fz_new_pixmap*
-	for how to obtain a pixmap. The pixmap is not cleared by the
-	draw device, see fz_clear_pixmap* for how to clear it prior to
-	calling fz_new_draw_device. Free the device by calling
-	fz_drop_device.
-
-	transform: Transform from user space in points to device space in pixels.
-
-	proof_cs: Intermediate color space to map though when mapping to
-	color space defined by pixmap.
-*/
-fz_device *fz_new_draw_device_with_proof(fz_context *ctx, const fz_matrix *transform, fz_pixmap *dest, fz_colorspace *proof_cs);
-
-/*
-	fz_new_draw_device_with_bbox_proof: Create a device to draw on a pixmap.
-
-	dest: Target pixmap for the draw device. See fz_new_pixmap*
-	for how to obtain a pixmap. The pixmap is not cleared by the
-	draw device, see fz_clear_pixmap* for how to clear it prior to
-	calling fz_new_draw_device. Free the device by calling
-	fz_drop_device.
-
-	transform: Transform from user space in points to device space in pixels.
-
-	clip: Bounding box to restrict any marking operations of the
-	draw device.
-
-	proof_cs: Color space to render to prior to mapping to color space defined by pixmap.
-*/
-fz_device *fz_new_draw_device_with_bbox_proof(fz_context *ctx, const fz_matrix *transform, fz_pixmap *dest, const fz_irect *clip, fz_colorspace *cs);
-
-fz_device *fz_new_draw_device_type3(fz_context *ctx, const fz_matrix *transform, fz_pixmap *dest);
-
-/*
-	struct fz_draw_options: Options for creating a pixmap and draw device.
-*/
-typedef struct fz_draw_options_s fz_draw_options;
-
-struct fz_draw_options_s
-{
-	int rotate;
-	int x_resolution;
-	int y_resolution;
-	int width;
-	int height;
-	fz_colorspace *colorspace;
-	int alpha;
-	int graphics;
-	int text;
-};
-
-extern const char *fz_draw_options_usage;
-
-/*
-	fz_parse_draw_options: Parse draw device options from a comma separated key-value string.
-*/
-fz_draw_options *fz_parse_draw_options(fz_context *ctx, fz_draw_options *options, const char *string);
-
-/*
-	fz_new_draw_device_with_options: Create a new pixmap and draw device, using the specified options.
-
-	options: Options to configure the draw device, and choose the resolution and colorspace.
-	mediabox: The bounds of the page in points.
-	pixmap: An out parameter containing the newly created pixmap.
-*/
-fz_device *fz_new_draw_device_with_options(fz_context *ctx, const fz_draw_options *options, const fz_rect *mediabox, fz_pixmap **pixmap);
+fz_device *fz_new_draw_device_type3(fz_context *ctx, fz_pixmap *dest);
 
 #endif

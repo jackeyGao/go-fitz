@@ -3,16 +3,13 @@
 
 #include "mupdf/fitz/system.h"
 
-/* The Unicode character used to incoming character whose value is unknown or unrepresentable. */
-#define FZ_REPLACEMENT_CHARACTER 0xFFFD
-
 /*
 	Safe string functions
 */
 
 /*
 	fz_strsep: Given a pointer to a C string (or a pointer to NULL) break
-	it at the first occurrence of a delimiter char (from a given set).
+	it at the first occurence of a delimiter char (from a given set).
 
 	stringp: Pointer to a C string pointer (or NULL). Updated on exit to
 	point to the first char of the string after the delimiter that was
@@ -39,7 +36,7 @@ char *fz_strsep(char **stringp, const char *delim);
 
 	Returns the length (excluding terminator) of src.
 */
-size_t fz_strlcpy(char *dst, const char *src, size_t n);
+int fz_strlcpy(char *dst, const char *src, int n);
 
 /*
 	fz_strlcat: Concatenate 2 strings, with a maximum length.
@@ -53,26 +50,17 @@ size_t fz_strlcpy(char *dst, const char *src, size_t n);
 	Returns the real length that a concatenated dst + src would have been
 	(not including terminator).
 */
-size_t fz_strlcat(char *dst, const char *src, size_t n);
+int fz_strlcat(char *dst, const char *src, int n);
 
 /*
 	fz_dirname: extract the directory component from a path.
 */
-void fz_dirname(char *dir, const char *path, size_t dirsize);
+void fz_dirname(char *dir, const char *path, int dirsize);
 
 /*
 	fz_urldecode: decode url escapes.
 */
 char *fz_urldecode(char *url);
-
-/*
-	fz_format_output_path: create output file name using a template.
-		If the path contains %[0-9]*d, the first such pattern will be replaced
-		with the page number. If the template does not contain such a pattern, the page
-		number will be inserted before the file suffix. If the template does not have
-		a file suffix, the page number will be added to the end.
-*/
-void fz_format_output_path(fz_context *ctx, char *path, size_t size, const char *fmt, int page);
 
 /*
 	fz_cleanname: rewrite path to the shortest string that names the same path.
@@ -83,23 +71,13 @@ void fz_format_output_path(fz_context *ctx, char *path, size_t size, const char 
 char *fz_cleanname(char *name);
 
 /*
-	Case insensitive (ASCII only) string comparison.
-*/
-int fz_strcasecmp(const char *a, const char *b);
-
-/*
-	FZ_UTFMAX: Maximum number of bytes in a decoded rune (maximum length returned by fz_chartorune).
-*/
-enum { FZ_UTFMAX = 4 };
-
-/*
 	fz_chartorune: UTF8 decode a single rune from a sequence of chars.
 
 	rune: Pointer to an int to assign the decoded 'rune' to.
 
 	str: Pointer to a UTF8 encoded string.
 
-	Returns the number of bytes consumed.
+	Returns the number of bytes consumed. Does not throw exceptions.
 */
 int fz_chartorune(int *rune, const char *str);
 
@@ -110,7 +88,8 @@ int fz_chartorune(int *rune, const char *str);
 
 	rune: Pointer to a 'rune'.
 
-	Returns the number of bytes the rune took to output.
+	Returns the number of bytes the rune took to output. Does not throw
+	exceptions.
 */
 int fz_runetochar(char *str, int rune);
 
@@ -134,11 +113,12 @@ int fz_runelen(int rune);
 int fz_utflen(const char *s);
 
 /*
-	fz_strtof: Locale-independent decimal to binary
+	fz_strtod/fz_strtof: Locale-independent decimal to binary
 	conversion. On overflow return (-)INFINITY and set errno to ERANGE. On
 	underflow return 0 and set errno to ERANGE. Special inputs (case
 	insensitive): "NAN", "INF" or "INFINITY".
 */
+double fz_strtod(const char *s, char **es);
 float fz_strtof(const char *s, char **es);
 
 /*
@@ -155,12 +135,5 @@ float fz_strtof_no_exp(const char *string, char **tailptr);
 	Assumes special cases (0, NaN, +Inf, -Inf) have been handled.
 */
 int fz_grisu(float f, char *s, int *exp);
-
-/*
-	Check and parse string into page ranges:
-		( ','? ([0-9]+|'N') ( '-' ([0-9]+|N) )? )+
-*/
-int fz_is_page_range(fz_context *ctx, const char *s);
-const char *fz_parse_page_range(fz_context *ctx, const char *s, int *a, int *b, int n);
 
 #endif
